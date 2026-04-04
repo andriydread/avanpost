@@ -52,6 +52,8 @@ git clone https://github.com/andriydread/avanpost.git .
 Edit the generated files to match your environment:
 
 - **`.env`**: Set your `GITHUB_WEBHOOK_SECRET` (matching the one in GitHub).
+- Use a strong random string for your `GITHUB_WEBHOOK_SECRET`. You can generate one with: `openssl rand -base64 48`
+
 - **`config.json`**: Map your repository names to their local paths and branches.
 
 ```json
@@ -77,6 +79,15 @@ sudo systemctl enable --now avanpost
 ```
 
 ---
+
+### 🔑 Note on SSH Keys
+
+The `avanpost` user must have an SSH key added to GitHub to perform `git pull`.
+
+1. `sudo su - avanpost`
+2. `ssh-keygen -t ed25519`
+3. Add the content of `~/.ssh/id_ed25519.pub` to GitHub (Settings -> SSH Keys).
+4. Run `ssh -T git@github.com` to verify connection.
 
 ## 🔗 GitHub Webhook Setup
 
@@ -124,17 +135,3 @@ sudo certbot --nginx -d avanpost.*your-domain.com*
 - **Check logs:** `tail -f /opt/avanpost/deployments.log`
 - **Check service status:** `systemctl status avanpost`
 - **Verify health:** `curl https://avanpost.*your-domain.com*/health`
-
-### 🔑 Note on SSH Keys
-
-The `avanpost` user must have an SSH key added to GitHub to perform `git pull`.
-
-1. `sudo su - avanpost`
-2. `ssh-keygen -t ed25519`
-3. Add the content of `~/.ssh/id_ed25519.pub` to GitHub (Settings -> SSH Keys).
-4. Run `ssh -T git@github.com` to verify connection.
-
-### 🔐 Generating a Secret
-
-Use a strong random string for your `GITHUB_WEBHOOK_SECRET`. You can generate one with:
-`openssl rand -base64 48`
