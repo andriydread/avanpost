@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import yaml
 import logging
 import os
 import subprocess
@@ -14,7 +15,7 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 load_dotenv()
 
 # Load config
-CONFIG_PATH = os.getenv("CONFIG_PATH", "config.json")
+CONFIG_PATH = os.getenv("CONFIG_PATH", "config.yaml")
 
 
 def load_config():
@@ -23,10 +24,37 @@ def load_config():
         sys.exit(1)
     try:
         with open(CONFIG_PATH, "r") as f:
-            data = json.load(f)
-            if "repos" not in data:
-                print("CRITICAL: 'repos' key missing in config.json")
+            data = yaml.safe_load(f)
+
+            if not data or "repos" not in data or not isinstance(data["repos"], dict):
+                print("CRITICAL: 'repos' dictionary missing in config file.")
                 sys.exit(1)
+            # Validate each repository configuration
+            for repo_name, repo_conf in data["repos"].items():
+                if "path" not in repo_conf:
+                    print(f"CRITICAL: 'path' missing for repo '{repo_name}'")
+                    sys.exit(1)
+
+                # Ensure path is absolute and exists
+                abs_path = os.path.abspath(repo_conf["path"])
+                if not os.path.isabs(repo_conf["path"]):
+                    print(
+                        f"WARNING: Path for '{repo_name}' is not absolute. Normalized to: {abs_path}"
+                    )
+
+                if not os.path.exists(abs_path):
+                    print(
+                        f"CRITICAL: Path '{abs_path}' for repo '{repo_name}' does not exist."
+                    )
+                    sys.exit(1)
+
+                # Update with normalized absolute path
+                repo_conf["path"] = abs_path
+                # Default branch to main
+                repo_conf.setdefault("branch", "main")
+                # Default timeout to 900 seconds (15 mins)
+                repo_conf.setdefault("timeout", 900)
+
             return data
     except Exception as e:
         print(f"CRITICAL: Error loading config: {e}")
@@ -77,8 +105,12 @@ def verify_github_signature(payload_body: bytes, signature_header: str):
         return False
 
 
-def run_deploy_commands(path, repo_name, branch="main"):
+def run_deploy_commands(repo_name, repo_config):
     """Background task to run git and docker commands"""
+    path = repo_config["path"]
+    branch = repo_config["branch"]
+    timeout = repo_config["timeout"]
+
     try:
         logging.info(
             f"--- Starting deployment for {repo_name} ({branch}) at {path} ---"
@@ -93,29 +125,86 @@ def run_deploy_commands(path, repo_name, branch="main"):
             text=True,
             timeout=300,
         )
+
+        if result_pull.stdout:
+            logging.info(f"[{repo_name}] Git pull output: {result_pull.stdout.strip()}")
+
         if result_pull.returncode != 0:
             logging.error(f"[{repo_name}] Git pull failed: {result_pull.stderr}")
             return
 
         # 2-Docker Compose
-        logging.info(f"[{repo_name}] Running docker compose build")
+        logging.info(f"[{repo_name}] Running docker compose up -d --build")
         result_docker = subprocess.run(
             ["docker", "compose", "up", "-d", "--build"],
             cwd=path,
             capture_output=True,
             text=True,
-            timeout=900,  # 15 min
+            timeout=timeout,
         )
+
+        if result_docker.stdout:
+            logging.info(
+                f"[{repo_name}] Docker compose output: {result_docker.stdout.strip()}"
+            )
+
         if result_docker.returncode != 0:
             logging.error(
                 f"[{repo_name}] Docker compose failed: {result_docker.stderr}"
             )
             return
 
+        # 3-Health Check (Verify containers are running)
+        logging.info(f"[{repo_name}] Verifying container health")
+        result_ps = subprocess.run(
+            ["docker", "compose", "ps", "--format", "json"],
+            cwd=path,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        if result_ps.returncode == 0:
+            try:
+                # Some versions return multiple JSON objects, one per line
+                containers = []
+                for line in result_ps.stdout.strip().split("\n"):
+                    if line:
+                        containers.append(json.loads(line))
+
+                # Check status of each container
+                # Note: Field names can vary between docker compose versions (State vs Status)
+                unhealthy = []
+                for container in containers:
+                    state = (
+                        container.get("State") or container.get("Status", "").lower()
+                    )
+                    name = container.get("Name") or container.get("Service", "unknown")
+
+                    if "running" not in state and "up" not in state:
+                        unhealthy.append(f"{name} ({state})")
+
+                if unhealthy:
+                    logging.warning(
+                        f"[{repo_name}] Some containers are not running: {', '.join(unhealthy)}"
+                    )
+                else:
+                    logging.info(
+                        f"[{repo_name}] All containers are healthy and running."
+                    )
+            except Exception as e:
+                logging.warning(
+                    f"[{repo_name}] Could not parse health check output: {e}"
+                )
+        else:
+            logging.warning(
+                f"[{repo_name}] Health check command failed: {result_ps.stderr}"
+            )
+
         logging.info(f"--- [{repo_name}] Deployment finished successfully ---")
 
     except Exception as e:
-        logging.error(f"[{repo_name}] Unexpected error: {str(e)}")
+        logging.error(f"[{repo_name}] Unexpected error during deployment: {str(e)}")
 
 
 @app.get("/health")
@@ -158,9 +247,7 @@ async def webhook(
         return {"status": "error", "reason": "Path not found"}
 
     # Start deployment in background
-    background_tasks.add_task(
-        run_deploy_commands, deploy_path, repo_name, target_branch
-    )
+    background_tasks.add_task(run_deploy_commands, repo_name, repo_config)
 
     return {"status": "accepted", "message": f"Deployment for {repo_name} started."}
 

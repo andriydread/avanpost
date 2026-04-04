@@ -1,0 +1,13 @@
+# Deployment Engine Configuration
+log_file: "deployments.log"
+
+# Consult readme.yaml for help
+repos:
+  my-cool-app:
+    path: "/opt/your-app"
+    branch: "main"
+    timeout: 900 # Max seconds to wait for docker compose to finish
+  
+  another-repo:
+    path: "/opt/another-path"
+    branch: "prod"

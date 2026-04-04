@@ -27,10 +27,10 @@ if [ ! -f ".env" ]; then
     echo -e "${GREEN}ACTION REQUIRED:${NC} Please edit .env and set your GITHUB_WEBHOOK_SECRET."
 fi
 
-if [ ! -f "config.json" ]; then
-    echo -e "Creating config.json from example..."
-    cp config.json.example config.json
-    echo -e "${GREEN}ACTION REQUIRED:${NC} Please edit config.json to map your repositories."
+if [ ! -f "config.yaml" ]; then
+    echo -e "Creating config.yaml from example..."
+    cp config.yaml.example config.yaml
+    echo -e "${GREEN}ACTION REQUIRED:${NC} Please edit config.yaml to map your repositories."
 fi
 
 # 4. Check Docker Permissions
