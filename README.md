@@ -1,6 +1,6 @@
 # Avanpost
 
-A lightweight, secure GitHub Webhook receiver built with FastAPI. It automatically pulls code and restarts Docker containers on your VPS whenever you push to a tracked branch.
+A lightweight, secure GitHub Webhook receiver built with FastAPI. It automatically pulls code and restarts Docker containers on server whenever you push to a tracked branch.
 
 ### Key Features
 
@@ -15,7 +15,7 @@ A lightweight, secure GitHub Webhook receiver built with FastAPI. It automatical
 
 ### 1. Create a Dedicated User
 
-Create a `avanpost` user and add them to the `docker` group so they can manage containers.
+Create a `avanpost` user and add them to the `docker` group so it can manage containers.
 
 ```bash
 # Create the user
@@ -51,17 +51,15 @@ git clone https://github.com/andriydread/avanpost.git .
 
 Edit the generated files to match your environment:
 
-- **`.env`**: Set your `GITHUB_WEBHOOK_SECRET` (matching the one in GitHub).
-- Use a strong random string for your `GITHUB_WEBHOOK_SECRET`. You can generate one with: `openssl rand -base64 48`
-
-- **`config.json`**: Map your repository names to their local paths and branches.
+- **`.env`**: Set your `GITHUB_WEBHOOK_SECRET` (matching the one in GitHub). You can generate strong random string with: `openssl rand -base64 48`
+- **`config.json`**: Map your repository names to their local paths and branches. 
 
 ```json
 {
   "log_file": "deployments.log",
   "repos": {
-    "my-cool-app": {
-      "path": "/opt/your-app",
+    "your-repo": {
+      "path": "/opt/your-repo",
       "branch": "main"
     }
   }
@@ -86,12 +84,12 @@ The `avanpost` user must have an SSH key added to GitHub to perform `git pull`.
 
 1. `sudo su - avanpost`
 2. `ssh-keygen -t ed25519`
-3. Add the content of `~/.ssh/id_ed25519.pub` to GitHub (Settings -> SSH Keys).
+3. Add the content of `~/.ssh/id_ed25519.pub` (`cat ~/.ssh/id_ed25519.pub`) to GitHub (Settings -> SSH Keys -> Add SSH Key).
 4. Run `ssh -T git@github.com` to verify connection.
 
 ## 🔗 GitHub Webhook Setup
 
-1. Go to your GitHub Repository -> **Settings** -> **Webhooks** -> **Add webhook**.
+1. Go to GitHub Repository you want to track-> **Settings** -> **Webhooks** -> **Add webhook**.
 2. **Payload URL**: `https://avanpost.*your-domain.com*/webhook`
 3. **Content type**: `application/json`
 4. **Secret**: The secret you put in your `.env` file.
@@ -99,13 +97,13 @@ The `avanpost` user must have an SSH key added to GitHub to perform `git pull`.
 
 ---
 
-## 🔒 Nginx Reverse Proxy (Highly Recommended)
+## 🔒 Nginx Reverse Proxy
 
-If you have Nginx installed on your VPS, it is best to set it up as a reverse proxy with SSL (HTTPS).
+Install Nginx on your server, it is best to set it up as a reverse proxy with SSL (HTTPS).
 
 ### 1. Nginx Configuration
 
-Create a file at `/etc/nginx/sites-available/avanpost` and paste the following:
+Create a file at `/etc/nginx/sites-available/avanpost` (`nano /etc/nginx/sites-available/avanpost`) and paste the following:
 
 ```nginx
 server {
