@@ -18,50 +18,75 @@ load_dotenv()
 CONFIG_PATH = os.getenv("CONFIG_PATH", "config.yaml")
 
 
-def load_config():
+def load_config(exit_on_error=True):
     if not os.path.exists(CONFIG_PATH):
-        print(f"CRITICAL: Config file {CONFIG_PATH} not found.")
-        sys.exit(1)
+        msg = f"CRITICAL: Config file {CONFIG_PATH} not found."
+        if exit_on_error:
+            print(msg)
+            sys.exit(1)
+        logging.error(msg)
+        return None
     try:
         with open(CONFIG_PATH, "r") as f:
             data = yaml.safe_load(f)
 
             if not data or "repos" not in data or not isinstance(data["repos"], dict):
-                print("CRITICAL: 'repos' dictionary missing in config file.")
-                sys.exit(1)
+                msg = "CRITICAL: 'repos' dictionary missing in config file."
+                if exit_on_error:
+                    print(msg)
+                    sys.exit(1)
+                logging.error(msg)
+                return None
+            
+            # Global defaults with hardcoded fallbacks
+            global_branch = data.get("branch", "main")
+            global_timeout = data.get("timeout", 900)
+            global_auto_cleanup = data.get("auto_cleanup", False)
+
             # Validate each repository configuration
             for repo_name, repo_conf in data["repos"].items():
                 if "path" not in repo_conf:
-                    print(f"CRITICAL: 'path' missing for repo '{repo_name}'")
-                    sys.exit(1)
+                    msg = f"CRITICAL: 'path' missing for repo '{repo_name}'"
+                    if exit_on_error:
+                        print(msg)
+                        sys.exit(1)
+                    logging.error(msg)
+                    return None
+
+                # Inject defaults
+                repo_conf.setdefault("branch", global_branch)
+                repo_conf.setdefault("timeout", global_timeout)
+                repo_conf.setdefault("auto_cleanup", global_auto_cleanup)
 
                 # Ensure path is absolute and exists
                 abs_path = os.path.abspath(repo_conf["path"])
                 if not os.path.isabs(repo_conf["path"]):
-                    print(
-                        f"WARNING: Path for '{repo_name}' is not absolute. Normalized to: {abs_path}"
+                    logging.warning(
+                        f"Path for '{repo_name}' is not absolute. Normalized to: {abs_path}"
                     )
 
                 if not os.path.exists(abs_path):
-                    print(
-                        f"CRITICAL: Path '{abs_path}' for repo '{repo_name}' does not exist."
-                    )
-                    sys.exit(1)
+                    msg = f"CRITICAL: Path '{abs_path}' for repo '{repo_name}' does not exist."
+                    if exit_on_error:
+                        print(msg)
+                        sys.exit(1)
+                    logging.error(msg)
+                    return None
 
                 # Update with normalized absolute path
                 repo_conf["path"] = abs_path
-                # Default branch to main
-                repo_conf.setdefault("branch", "main")
-                # Default timeout to 900 seconds (15 mins)
-                repo_conf.setdefault("timeout", 900)
 
             return data
     except Exception as e:
-        print(f"CRITICAL: Error loading config: {e}")
-        sys.exit(1)
+        msg = f"CRITICAL: Error loading config: {e}"
+        if exit_on_error:
+            print(msg)
+            sys.exit(1)
+        logging.error(msg)
+        return None
 
 
-config = load_config()
+config = load_config(exit_on_error=True)
 
 # Setup logging with Rotation (5 files of 1MB each)
 log_handler = RotatingFileHandler(
@@ -106,102 +131,133 @@ def verify_github_signature(payload_body: bytes, signature_header: str):
 
 
 def run_deploy_commands(repo_name, repo_config):
-    """Background task to run git and docker commands"""
+    """Background task to run deployment commands"""
     path = repo_config["path"]
     branch = repo_config["branch"]
     timeout = repo_config["timeout"]
+    custom_commands = repo_config.get("commands")
+    auto_cleanup = repo_config.get("auto_cleanup")
 
     try:
         logging.info(
             f"--- Starting deployment for {repo_name} ({branch}) at {path} ---"
         )
 
-        # 1-Git Pull
-        logging.info(f"[{repo_name}] Running git pull")
-        result_pull = subprocess.run(
-            ["git", "pull", "origin", branch],
-            cwd=path,
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-
-        if result_pull.stdout:
-            logging.info(f"[{repo_name}] Git pull output: {result_pull.stdout.strip()}")
-
-        if result_pull.returncode != 0:
-            logging.error(f"[{repo_name}] Git pull failed: {result_pull.stderr}")
-            return
-
-        # 2-Docker Compose
-        logging.info(f"[{repo_name}] Running docker compose up -d --build")
-        result_docker = subprocess.run(
-            ["docker", "compose", "up", "-d", "--build"],
-            cwd=path,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-
-        if result_docker.stdout:
-            logging.info(
-                f"[{repo_name}] Docker compose output: {result_docker.stdout.strip()}"
-            )
-
-        if result_docker.returncode != 0:
-            logging.error(
-                f"[{repo_name}] Docker compose failed: {result_docker.stderr}"
-            )
-            return
-
-        # 3-Health Check (Verify containers are running)
-        logging.info(f"[{repo_name}] Verifying container health")
-        result_ps = subprocess.run(
-            ["docker", "compose", "ps", "--format", "json"],
-            cwd=path,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-
-        if result_ps.returncode == 0:
-            try:
-                # Some versions return multiple JSON objects, one per line
-                containers = []
-                for line in result_ps.stdout.strip().split("\n"):
-                    if line:
-                        containers.append(json.loads(line))
-
-                # Check status of each container
-                # Note: Field names can vary between docker compose versions (State vs Status)
-                unhealthy = []
-                for container in containers:
-                    state = (
-                        container.get("State") or container.get("Status", "").lower()
-                    )
-                    name = container.get("Name") or container.get("Service", "unknown")
-
-                    if "running" not in state and "up" not in state:
-                        unhealthy.append(f"{name} ({state})")
-
-                if unhealthy:
-                    logging.warning(
-                        f"[{repo_name}] Some containers are not running: {', '.join(unhealthy)}"
-                    )
-                else:
-                    logging.info(
-                        f"[{repo_name}] All containers are healthy and running."
-                    )
-            except Exception as e:
-                logging.warning(
-                    f"[{repo_name}] Could not parse health check output: {e}"
+        success = True
+        if custom_commands:
+            logging.info(f"[{repo_name}] Running custom deployment commands")
+            for cmd in custom_commands:
+                logging.info(f"[{repo_name}] Executing: {cmd}")
+                result = subprocess.run(
+                    cmd,
+                    cwd=path,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
                 )
+                if result.stdout:
+                    logging.info(f"[{repo_name}] Output: {result.stdout.strip()}")
+                if result.returncode != 0:
+                    logging.error(f"[{repo_name}] Command failed: {result.stderr}")
+                    success = False
+                    break
         else:
-            logging.warning(
-                f"[{repo_name}] Health check command failed: {result_ps.stderr}"
+            # Default behavior
+            # 1-Git Pull
+            logging.info(f"[{repo_name}] Running git pull")
+            result_pull = subprocess.run(
+                ["git", "pull", "origin", branch],
+                cwd=path,
+                capture_output=True,
+                text=True,
+                timeout=300,
             )
 
-        logging.info(f"--- [{repo_name}] Deployment finished successfully ---")
+            if result_pull.stdout:
+                logging.info(f"[{repo_name}] Git pull output: {result_pull.stdout.strip()}")
+
+            if result_pull.returncode != 0:
+                logging.error(f"[{repo_name}] Git pull failed: {result_pull.stderr}")
+                success = False
+            else:
+                # 2-Docker Compose
+                logging.info(f"[{repo_name}] Running docker compose up -d --build")
+                result_docker = subprocess.run(
+                    ["docker", "compose", "up", "-d", "--build"],
+                    cwd=path,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+
+                if result_docker.stdout:
+                    logging.info(
+                        f"[{repo_name}] Docker compose output: {result_docker.stdout.strip()}"
+                    )
+
+                if result_docker.returncode != 0:
+                    logging.error(
+                        f"[{repo_name}] Docker compose failed: {result_docker.stderr}"
+                    )
+                    success = False
+                else:
+                    # 3-Health Check (Verify containers are running)
+                    logging.info(f"[{repo_name}] Verifying container health")
+                    result_ps = subprocess.run(
+                        ["docker", "compose", "ps", "--format", "json"],
+                        cwd=path,
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
+
+                    if result_ps.returncode == 0:
+                        try:
+                            containers = []
+                            for line in result_ps.stdout.strip().split("\n"):
+                                if line:
+                                    containers.append(json.loads(line))
+
+                            unhealthy = []
+                            for container in containers:
+                                state = (
+                                    container.get("State") or container.get("Status", "").lower()
+                                )
+                                name = container.get("Name") or container.get("Service", "unknown")
+
+                                if "running" not in state and "up" not in state:
+                                    unhealthy.append(f"{name} ({state})")
+
+                            if unhealthy:
+                                logging.warning(
+                                    f"[{repo_name}] Some containers are not running: {', '.join(unhealthy)}"
+                                )
+                            else:
+                                logging.info(
+                                    f"[{repo_name}] All containers are healthy and running."
+                                )
+                        except Exception as e:
+                            logging.warning(
+                                f"[{repo_name}] Could not parse health check output: {e}"
+                            )
+                    else:
+                        logging.warning(
+                            f"[{repo_name}] Health check command failed: {result_ps.stderr}"
+                        )
+
+        if success:
+            if auto_cleanup:
+                logging.info(f"[{repo_name}] Running auto-cleanup: docker system prune -f")
+                subprocess.run(
+                    ["docker", "system", "prune", "-f"],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+            logging.info(f"--- [{repo_name}] Deployment finished successfully ---")
+        else:
+            logging.error(f"--- [{repo_name}] Deployment failed ---")
 
     except Exception as e:
         logging.error(f"[{repo_name}] Unexpected error during deployment: {str(e)}")
@@ -209,7 +265,8 @@ def run_deploy_commands(repo_name, repo_config):
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "config_loaded": bool(config.get("repos"))}
+    current_config = load_config(exit_on_error=False) or config
+    return {"status": "healthy", "config_loaded": bool(current_config.get("repos"))}
 
 
 @app.post("/webhook")
@@ -224,6 +281,12 @@ async def webhook(
         logging.warning("Invalid signature received")
         raise HTTPException(status_code=403, detail="Invalid signature")
 
+    # Reload config to get latest settings
+    current_config = load_config(exit_on_error=False)
+    if not current_config:
+        logging.error("Failed to reload config during webhook, using cached version")
+        current_config = config
+
     try:
         data = json.loads(body)
     except json.JSONDecodeError:
@@ -232,7 +295,7 @@ async def webhook(
     repo_name = data.get("repository", {}).get("name")
     branch_ref = data.get("ref", "")
 
-    repo_config = config.get("repos", {}).get(repo_name)
+    repo_config = current_config.get("repos", {}).get(repo_name)
     if not repo_config:
         logging.warning(f"No config for: {repo_name}")
         return {"status": "ignored", "reason": f"Repo '{repo_name}' not in config"}

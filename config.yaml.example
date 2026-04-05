@@ -1,13 +1,17 @@
 # Deployment Engine Configuration
 log_file: "deployments.log"
 
-# Consult readme.yaml for help
+# Global defaults (inherited by all repos unless overridden)
+branch: "main"
+timeout: 900
+auto_cleanup: false
+
+# If 'commands' is not provided, the default will be 'git pull' and 'docker compose'.
+
+# Repository configurations
 repos:
-  my-cool-app:
-    path: "/opt/your-app"
-    branch: "main"
-    timeout: 900 # Max seconds to wait for docker compose to finish
-  
-  another-repo:
-    path: "/opt/another-path"
-    branch: "prod"
+  app1:
+    path: "/opt/app1"
+    branch: "test"
+    timeout: 900
+    auto_cleanup: true

@@ -75,23 +75,35 @@ Edit the generated files to match your environment:
 - **`config.yaml`**: Map your repository names (exactly as they appear in GitHub URLs) to their local paths and settings.
 
 ```yaml
-# Deployment Engine Configuration
-log_file: "deployments.log"
+# Global defaults (inherited by all repos unless overridden)
+branch: "main"
+timeout: 900
+auto_cleanup: false
 
+# Repository configurations
 repos:
-  my-cool-app:
-    path: "/opt/your-app"
-    branch: "main"
-    timeout: 900
+  my-app:
+    path: "/opt/my-app"
+    # branch: "main" (Inherited from global)
+    # timeout: 900   (Inherited from global)
+
+  production-app:
+    path: "/opt/production-app"
+    branch: "prod"      # Override default branch
+    auto_cleanup: true  # Override global auto_cleanup
 ```
 
 **Configuration Fields:**
 
-| Field     | Description                                         | Required | Default |
-| :-------- | :-------------------------------------------------- | :------: | :------ |
-| `path`    | Absolute path to the repository on your server.     |   Yes    | -       |
-| `branch`  | The branch to track for deployments.                |    No    | `main`  |
-| `timeout` | Max seconds to wait for `docker compose` to finish. |    No    | `900`   |
+| Field          | Description                                             | Required | Default  |
+| :------------- | :------------------------------------------------------ | :------: | :------- |
+| `path`         | Absolute path to the repository on your server.         |   Yes    | -        |
+| `branch`       | The branch to track for deployments.                    |    No    | `main`   |
+| `timeout`      | Max seconds to wait for `docker compose` to finish.     |    No    | `900`    |
+| `auto_cleanup` | Runs `docker system prune -f` after successful builds.  |    No    | `false`  |
+| `commands`     | List of custom shell commands to run instead of docker. |    No    | -        |
+
+> **Note:** Global defaults can be set at the top level of the file and will be applied to all repositories unless specifically overridden in their individual blocks.
 
 ---
 
