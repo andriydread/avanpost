@@ -3,9 +3,7 @@
 config.json
 *.log
 __pycache__/
-avanpost.service
 .DS_Store
 
 GEMINI.md
 analysis.txt
-to-do.txt

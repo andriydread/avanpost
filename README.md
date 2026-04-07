@@ -112,6 +112,66 @@ sudo systemctl enable --now avanpost
 
 ---
 
+## 🌐 Reverse Proxy & SSL (Nginx + Certbot)
+
+For production, you should run Avanpost behind a reverse proxy like Nginx and enable HTTPS.
+
+### 1. Install Nginx and Certbot
+
+```bash
+sudo apt update
+sudo apt install nginx certbot python3-certbot-nginx -y
+```
+
+### 2. Configure Nginx
+
+Create a new site configuration:
+
+```bash
+sudo nano /etc/nginx/sites-available/avanpost
+```
+
+Paste the following configuration (replace `subdomain.your-domain.com` with your actual domain):
+
+```nginx
+server {
+    listen 80;
+    server_name subdomain.your-domain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Enable the configuration and restart Nginx:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/avanpost /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+### 3. Obtain SSL Certificate
+
+Run Certbot to automatically configure HTTPS:
+
+```bash
+sudo certbot --nginx -d subdomain.your-domain.com
+```
+
+Follow the interactive prompts to finish the setup. Certbot will automatically update your Nginx configuration to support SSL and redirect HTTP to HTTPS.
+
+---
+
 ## 🔄 Updating Avanpost
 
 To update Avanpost to the latest version on your server:
