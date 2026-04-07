@@ -1,17 +1,17 @@
 # Deployment Engine Configuration
 log_file: "deployments.log"
 
-# Global defaults (inherited by all repos unless overridden)
-branch: "main"
-timeout: 900
-auto_cleanup: false
-
-# If 'commands' is not provided, the default will be 'git pull' and 'docker compose'.
-
 # Repository configurations
+# Every repository must have a 'path'.
+# 'branch' and 'timeout' are optional and will use Python defaults if missing.
+# 'commands' are optional but app will just exit without them.
+
 repos:
   app1:
     path: "/opt/app1"
-    branch: "test"
+    branch: "main"
     timeout: 900
-    auto_cleanup: true
+    commands:
+      - git fetch origin main
+      - git reset --hard origin/main
+      - docker compose up -d --build
