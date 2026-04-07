@@ -1,13 +1,14 @@
 # Avanpost
 
-A lightweight, secure GitHub Webhook receiver built with FastAPI. It automatically pulls code and restarts Docker containers on your server whenever you push to a tracked branch.
+A lightweight, secure GitHub Webhook receiver built with FastAPI and Pydantic. It automatically deploys your projects on Linux server whenever you push to a tracked branch.
 
 ### Key Features
 
-- **Async Deployments:** Responds to GitHub immediately; builds happen in the background.
-- **Multi-Repo Support:** Track multiple repositories with different paths and branches.
+- **Async Deployments:** Responds to GitHub immediately; deployment commands run in the background using `asyncio`.
+- **Modular Architecture:** Clean separation between API, configuration, and deployment services.
+- **Pydantic Validation:** Robust configuration parsing with automatic type checking and directory validation.
 - **Secure:** Validates GitHub's HMAC-SHA256 signatures using a secret key.
-- **Robust:** Captures build errors in logs and uses timeouts to prevent hung processes.
+- **Health Monitoring:** Detailed `/health` endpoint providing system info and monitored repository status.
 
 ---
 
@@ -15,101 +16,93 @@ A lightweight, secure GitHub Webhook receiver built with FastAPI. It automatical
 
 Before starting the installation, ensure you have:
 
-1. **A Subdomain:** Create an `A` record in your DNS provider (e.g., Cloudflare, Route53) pointing to your server IP address (e.g., `subdomain.domain.com`).
-2. **Docker & Docker Compose:** Installed on your target server.
-3. **Nginx:** Installed if you want to use the recommended reverse proxy setup.
+1. **A Subdomain:** Create an `A` record in your DNS provider pointing to your server IP.
+2. **Python 3.10+:** Installed on the host.
 
 ---
 
-## 🛠 Installation (Recommended Setup)
+## 🛠 Installation
 
 ### 1. Create a Dedicated User
 
-Create a `avanpost` user and add them to the `docker` group so it can manage containers.
-
 ```bash
-# Create the user
 sudo useradd -m -s /bin/bash avanpost
-
-# Add to docker group
 sudo usermod -aG docker avanpost
-
-# Create the app directory and give ownership
 sudo mkdir -p /opt/avanpost
 sudo chown avanpost:avanpost /opt/avanpost
 ```
 
 ### 🔑 Note on SSH Keys
 
-The `avanpost` user must have an SSH key added to GitHub to perform `git pull`.
+The `avanpost` user needs an SSH key added to GitHub to perform `git pull` operations.
 
-1. `sudo su - avanpost`
-2. `ssh-keygen -t ed25519`
-3. Add the content of `~/.ssh/id_ed25519.pub` (`cat ~/.ssh/id_ed25519.pub`) to GitHub (Settings -> SSH Keys -> Add SSH Key).
-4. Run `ssh -T git@github.com` to verify connection.
+```bash
+sudo su - avanpost
+ssh-keygen -t ed25519
+cat ~/.ssh/id_ed25519.pub # Copy SSH key to GitHub
+ssh -T git@github.com     # Verify connection
+exit
+```
 
 ### 2. Clone and Setup
 
-Switch to the new user and clone the repository directly into the target directory.
-
 ```bash
-# Switch to the user
 sudo su - avanpost
-
-# Go to the directory
 cd /opt/avanpost
-
-# Clone the repository (the dot at the end is important)
 git clone https://github.com/andriydread/avanpost.git .
-
-# Run the setup script
 ./setup.sh
 ```
 
 ### 3. Configuration
 
-Edit the generated files to match your environment:
+While still logged in as `avanpost`, edit the generated files:
 
-- **`.env`**: Set your `GITHUB_WEBHOOK_SECRET`. You can generate a strong random string with:
-  `openssl rand -base64 48`
-- **`config.yaml`**: Map your repository names (exactly as they appear in GitHub URLs) to their local paths and settings.
+- **`.env`**: Set your `GITHUB_WEBHOOK_SECRET` and optional `PORT` (default 8001).
+- **`config.yaml`**: Map your repository names to their local paths and deployment commands.
+
+```bash
+nano .env
+nano config.yaml
+exit
+```
+
+#### `config.yaml` Example:
 
 ```yaml
-# Global defaults (inherited by all repos unless overridden)
-branch: "main"
-timeout: 900
-auto_cleanup: false
+log_file: "deployments.log"
 
-# Repository configurations
 repos:
-  my-app:
-    path: "/opt/my-app"
-    # branch: "main" (Inherited from global)
-    # timeout: 900   (Inherited from global)
+  my-web-app:
+    path: "/opt/my-web-app"
+    branch: "main"
+    timeout: 600
+    commands:
+      - git fetch origin main
+      - git reset --hard origin/main
+      - docker compose up -d --build
 
-  production-app:
-    path: "/opt/production-app"
-    branch: "prod"      # Override default branch
-    auto_cleanup: true  # Override global auto_cleanup
+  analytics-api:
+    path: "/home/user/projects/analytics"
+    branch: "prod"
+    commands:
+      - ./deploy.sh
 ```
 
 **Configuration Fields:**
 
-| Field          | Description                                             | Required | Default  |
-| :------------- | :------------------------------------------------------ | :------: | :------- |
-| `path`         | Absolute path to the repository on your server.         |   Yes    | -        |
-| `branch`       | The branch to track for deployments.                    |    No    | `main`   |
-| `timeout`      | Max seconds to wait for `docker compose` to finish.     |    No    | `900`    |
-| `auto_cleanup` | Runs `docker system prune -f` after successful builds.  |    No    | `false`  |
-| `commands`     | List of custom shell commands to run instead of docker. |    No    | -        |
-
-> **Note:** Global defaults can be set at the top level of the file and will be applied to all repositories unless specifically overridden in their individual blocks.
+| Field      | Description                                          | Default           |
+| :--------- | :--------------------------------------------------- | :---------------- |
+| `path`     | **Required.** Absolute path to the local repository. | -                 |
+| `branch`   | The branch to track for deployments.                 | `main`            |
+| `timeout`  | Max seconds to wait for each command.                | `900`             |
+| `commands` | List of shell commands to run for deployment.        | -                 |
+| `log_file` | Name of the deployment log file.                     | `deployments.log` |
 
 ---
 
 ### 4. Enable the Service
 
-As **root**, install and start the systemd service generated by the setup script:
+Back as your **sudo** user, install and start the systemd service:
 
 ```bash
 sudo cp /opt/avanpost/avanpost.service /etc/systemd/system/
@@ -119,47 +112,49 @@ sudo systemctl enable --now avanpost
 
 ---
 
-## 🔗 GitHub Webhook Setup
+## 🔄 Updating Avanpost
 
-1. Go to your GitHub Repository -> **Settings** -> **Webhooks** -> **Add webhook**.
-2. **Payload URL**: `https://subdomain.domain.com/webhook`
-3. **Content type**: `application/json`
-4. **Secret**: The secret you put in your `.env` file.
-5. **Which events**: `Just the push event`.
+To update Avanpost to the latest version on your server:
+
+```bash
+# 1. Switch to the app user and pull changes
+sudo su - avanpost
+cd /opt/avanpost
+git pull origin main
+./setup.sh
+exit
+
+# 2. Back as root/sudo user, restart the service
+sudo systemctl restart avanpost
+```
 
 ---
 
-## 🔒 Nginx Reverse Proxy
+## 🔍 Monitoring & Health
 
-### 1. Nginx Configuration
+### Health Check
 
-Create a file at `/etc/nginx/sites-available/avanpost` (`sudo nano /etc/nginx/sites-available/avanpost`) and paste the following:
+Visit `https://subdomain.your-domain.com/health` to see the engine status:
 
-```nginx
-server {
-    server_name subdomain.domain.com;
+- **`status`**: Current application health.
+- **`config_loaded`**: Whether the configuration was parsed successfully.
+- **`repos_monitored`**: List of repositories currently being tracked.
+- **`environment`**: Versions of Git, Docker, and Docker Compose installed on the host.
 
-    location / {
-        proxy_pass http://127.0.0.1:8001;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
+### Logs
 
-### 2. Enable SSL with Certbot
+Deployment progress and errors are stored in the log file defined in your config (default `deployments.log`).
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/avanpost /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl reload nginx
-sudo certbot --nginx -d subdomain.domain.com
+tail -f /opt/avanpost/deployments.log
 ```
 
-## 🔍 Troubleshooting
+---
 
-- **Check logs:** `tail -f /opt/avanpost/deployments.log`
-- **Check service status:** `systemctl status avanpost`
-- **Verify health:** `curl https://subdomain.domain.com/health`
+## 🔗 GitHub Webhook Setup
+
+1. Go to your GitHub Repository -> **Settings** -> **Webhooks** -> **Add webhook**.
+2. **Payload URL**: `https://subdomain.your-domain.com/webhook`
+3. **Content type**: `application/json`
+4. **Secret**: The secret from your `.env` file.
+5. **Which events**: `Just the push event`.
