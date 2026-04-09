@@ -2,7 +2,7 @@
 
 A lightweight, secure GitHub Webhook receiver built with FastAPI and Pydantic. It automatically deploys your projects on Linux server whenever you push to a tracked branch.
 
-### Key Features
+## Key Features
 
 - **Async Deployments:** Responds to GitHub immediately; deployment commands run in the background using `asyncio`.
 - **Modular Architecture:** Clean separation between API, configuration, and deployment services.
@@ -11,6 +11,14 @@ A lightweight, secure GitHub Webhook receiver built with FastAPI and Pydantic. I
 - **Health Monitoring:** Detailed `/health` endpoint providing system info and monitored repository status.
 
 ---
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Reverse Proxy & SSL](#reverse-proxy--ssl-nginx--certbot)
+- [GitHub Webhook Setup](#github-webhook-setup)
+- [Updating Avanpost](#updating-avanpost)
+- [Monitoring & Health](#monitoring--health)
 
 ## 📋 Prerequisites
 
@@ -172,6 +180,16 @@ Follow the interactive prompts to finish the setup. Certbot will automatically u
 
 ---
 
+## 🔗 GitHub Webhook Setup
+
+1. Go to your GitHub Repository -> **Settings** -> **Webhooks** -> **Add webhook**.
+2. **Payload URL**: `https://subdomain.your-domain.com/webhook`
+3. **Content type**: `application/json`
+4. **Secret**: The secret from your `.env` file.
+5. **Which events**: `Just the push event`.
+
+---
+
 ## 🔄 Updating Avanpost
 
 To update Avanpost to the latest version on your server:
@@ -209,12 +227,4 @@ Deployment progress and errors are stored in the log file defined in your config
 tail -f /opt/avanpost/deployments.log
 ```
 
----
-
-## 🔗 GitHub Webhook Setup
-
-1. Go to your GitHub Repository -> **Settings** -> **Webhooks** -> **Add webhook**.
-2. **Payload URL**: `https://subdomain.your-domain.com/webhook`
-3. **Content type**: `application/json`
-4. **Secret**: The secret from your `.env` file.
-5. **Which events**: `Just the push event`.
+[↑ Back to Top](#table-of-contents)
