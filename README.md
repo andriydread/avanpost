@@ -70,12 +70,13 @@ git clone https://github.com/andriydread/avanpost.git .
 While still logged in as `avanpost`, edit the generated files:
 
 - **`.env`**: Set your `GITHUB_WEBHOOK_SECRET` and optional `PORT` (default 8001).
-- **`config.yaml`**: Map your repository names to their local paths and deployment commands.
+  Generate a secure `GITHUB_WEBHOOK_SECRET` with:
 
-Generate a secure `GITHUB_WEBHOOK_SECRET` with:
 ```bash
 python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
+
+- **`config.yaml`**: Map your repository names to their local paths and deployment commands.
 
 ```bash
 nano .env
@@ -223,12 +224,12 @@ sudo systemctl restart avanpost
 
 Visit `https://subdomain.your-domain.com/health` to see the engine status.
 
-| Field | Description | Type |
-| :--- | :--- | :--- |
-| `status` | Current application health. | `str` |
-| `config_loaded` | Whether the configuration was parsed successfully. | `bool` |
-| `repos_monitored` | List of repositories currently being tracked. | `list` |
-| `environment` | Versions of Git, Docker, and Docker Compose installed on the host. | `dict` |
+| Field             | Description                                                        | Type   |
+| :---------------- | :----------------------------------------------------------------- | :----- |
+| `status`          | Current application health.                                        | `str`  |
+| `config_loaded`   | Whether the configuration was parsed successfully.                 | `bool` |
+| `repos_monitored` | List of repositories currently being tracked.                      | `list` |
+| `environment`     | Versions of Git, Docker, and Docker Compose installed on the host. | `dict` |
 
 ### Logs
 
