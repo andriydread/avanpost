@@ -5,10 +5,10 @@ A lightweight, secure GitHub Webhook receiver built with FastAPI and Pydantic. I
 ## Key Features
 
 - **Async Deployments:** Responds to GitHub immediately; deployment commands run in the background using `asyncio`.
-- **Modular Architecture:** Clean separation between API, configuration, and deployment services.
+- **Modular Architecture:** Separation between API, configuration, and deployment services.
 - **Pydantic Validation:** Robust configuration parsing with automatic type checking and directory validation.
 - **Secure:** Validates GitHub's HMAC-SHA256 signatures using a secret key.
-- **Health Monitoring:** Detailed `/health` endpoint providing system info and monitored repository status.
+- **Health Monitoring:** `/health` endpoint providing system info and monitored repository status.
 
 ---
 
@@ -25,7 +25,11 @@ A lightweight, secure GitHub Webhook receiver built with FastAPI and Pydantic. I
 Before starting the installation, ensure you have:
 
 1. **A Subdomain:** Create an `A` record in your DNS provider pointing to your server IP.
-2. **Python 3.10+:** Installed on the host.
+2. **Python 3.10+:** Installed on the host (including `pip` and `venv`).
+   ```bash
+   sudo apt update
+   sudo apt install python3 python3-pip python3-venv git -y
+   ```
 
 ---
 
@@ -67,6 +71,11 @@ While still logged in as `avanpost`, edit the generated files:
 
 - **`.env`**: Set your `GITHUB_WEBHOOK_SECRET` and optional `PORT` (default 8001).
 - **`config.yaml`**: Map your repository names to their local paths and deployment commands.
+
+Generate a secure `GITHUB_WEBHOOK_SECRET` with:
+```bash
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
 
 ```bash
 nano .env
@@ -110,7 +119,7 @@ repos:
 
 ### 4. Enable the Service
 
-Back as your **sudo** user, install and start the systemd service:
+Back as your **sudo** user, install and start the generated systemd service:
 
 ```bash
 sudo cp /opt/avanpost/avanpost.service /etc/systemd/system/
@@ -122,7 +131,7 @@ sudo systemctl enable --now avanpost
 
 ## Reverse Proxy & SSL
 
-For production, you should run Avanpost behind a reverse proxy like Nginx and enable HTTPS.
+For production, avanpost should be run behind a reverse proxy like Nginx and enabled HTTPS.
 
 ### 1. Install Nginx and Certbot
 
@@ -212,12 +221,14 @@ sudo systemctl restart avanpost
 
 ### Health Check
 
-Visit `https://subdomain.your-domain.com/health` to see the engine status:
+Visit `https://subdomain.your-domain.com/health` to see the engine status.
 
-- **`status`**: Current application health.
-- **`config_loaded`**: Whether the configuration was parsed successfully.
-- **`repos_monitored`**: List of repositories currently being tracked.
-- **`environment`**: Versions of Git, Docker, and Docker Compose installed on the host.
+| Field | Description | Type |
+| :--- | :--- | :--- |
+| `status` | Current application health. | `str` |
+| `config_loaded` | Whether the configuration was parsed successfully. | `bool` |
+| `repos_monitored` | List of repositories currently being tracked. | `list` |
+| `environment` | Versions of Git, Docker, and Docker Compose installed on the host. | `dict` |
 
 ### Logs
 
