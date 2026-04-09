@@ -15,12 +15,12 @@ A lightweight, secure GitHub Webhook receiver built with FastAPI and Pydantic. I
 ## Table of Contents
 
 - [Installation](#installation)
-- [Reverse Proxy & SSL](#reverse-proxy--ssl-nginx--certbot)
+- [Reverse Proxy & SSL](#reverse-proxy--ssl)
 - [GitHub Webhook Setup](#github-webhook-setup)
 - [Updating Avanpost](#updating-avanpost)
 - [Monitoring & Health](#monitoring--health)
 
-## 📋 Prerequisites
+## Prerequisites
 
 Before starting the installation, ensure you have:
 
@@ -29,7 +29,7 @@ Before starting the installation, ensure you have:
 
 ---
 
-## 🛠 Installation
+## Installation
 
 ### 1. Create a Dedicated User
 
@@ -40,7 +40,7 @@ sudo mkdir -p /opt/avanpost
 sudo chown avanpost:avanpost /opt/avanpost
 ```
 
-### 🔑 Note on SSH Keys
+### Note on SSH Keys
 
 The `avanpost` user needs an SSH key added to GitHub to perform `git pull` operations.
 
@@ -120,7 +120,7 @@ sudo systemctl enable --now avanpost
 
 ---
 
-## 🌐 Reverse Proxy & SSL (Nginx + Certbot)
+## Reverse Proxy & SSL
 
 For production, you should run Avanpost behind a reverse proxy like Nginx and enable HTTPS.
 
@@ -180,7 +180,7 @@ Follow the interactive prompts to finish the setup. Certbot will automatically u
 
 ---
 
-## 🔗 GitHub Webhook Setup
+## GitHub Webhook Setup
 
 1. Go to your GitHub Repository -> **Settings** -> **Webhooks** -> **Add webhook**.
 2. **Payload URL**: `https://subdomain.your-domain.com/webhook`
@@ -190,7 +190,7 @@ Follow the interactive prompts to finish the setup. Certbot will automatically u
 
 ---
 
-## 🔄 Updating Avanpost
+## Updating Avanpost
 
 To update Avanpost to the latest version on your server:
 
@@ -208,7 +208,7 @@ sudo systemctl restart avanpost
 
 ---
 
-## 🔍 Monitoring & Health
+## Monitoring & Health
 
 ### Health Check
 
@@ -226,5 +226,3 @@ Deployment progress and errors are stored in the log file defined in your config
 ```bash
 tail -f /opt/avanpost/deployments.log
 ```
-
-[↑ Back to Top](#table-of-contents)
